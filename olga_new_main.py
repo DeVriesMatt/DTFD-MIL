@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from Model.network import Classifier_1fc, DimReduction
 import numpy as np
 from utils import eval_metric
+import pandas as pd
 
 parser = argparse.ArgumentParser(description='abc')
 testMask_dir = '/run/user/1128299809/gvfs/smb-share:server=rds.icr.ac.uk,share=data/DBI/DUDBI/DYNCESYS/OlgaF/camelyon_data/testing/lesion_annotations' ## Point to the Camelyon test set mask location
@@ -33,9 +34,9 @@ parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--batch_size_v', default=1, type=int)
 parser.add_argument('--num_workers', default=4, type=int)
 parser.add_argument('--num_cls', default=2, type=int)
-parser.add_argument('--mDATA0_dir_train0', default='features_256_train.pickle', type=str) ## Train Set
-parser.add_argument('--mDATA0_dir_val0', default='features_256_val.pickle', type=str)     ## Validation Set
-parser.add_argument('--mDATA_dir_test0', default='features_256_test.pickle', type=str)    ## Test Set
+parser.add_argument('--mDATA0_dir_train0', default='features_256_train_transmilfold.pickle', type=str) ## Train Set
+parser.add_argument('--mDATA0_dir_val0', default='features_256_val_transmilfold.pickle', type=str)     ## Validation Set
+parser.add_argument('--mDATA_dir_test0', default='features_256_test_transmilfold.pickle', type=str)    ## Test Set
 parser.add_argument('--numGroup', default=4, type=int)
 parser.add_argument('--total_instance', default=4, type=int)
 parser.add_argument('--numGroup_test', default=4, type=int)
@@ -48,6 +49,7 @@ parser.add_argument('--numLayer_Res', default=0, type=int)
 parser.add_argument('--temperature', default=1, type=float)
 parser.add_argument('--num_MeanInference', default=1, type=int)
 parser.add_argument('--distill_type', default='AFS', type=str)   ## MaxMinS, MaxS, AFS
+parser.add_argument('--save_model_path', default='./best_model.pth', type=str)
 
 torch.manual_seed(32)
 torch.cuda.manual_seed(32)
@@ -77,7 +79,7 @@ def main():
     if not os.path.exists(params.log_dir):
         os.makedirs(params.log_dir)
     log_dir = os.path.join(params.log_dir, 'log.txt')
-    save_dir = os.path.join(params.log_dir, 'camelyon_best_model.pth')
+    save_dir = os.path.join(params.log_dir, params.save_model_path)
     z = vars(params).copy()
     with open(log_dir, 'a') as f:
         f.write(json.dumps(z))
@@ -90,9 +92,9 @@ def main():
     with open(params.mDATA_dir_test0, 'rb') as f:
         mDATA_test = pickle.load(f)
 
-    SlideNames_train, FeatList_train, Label_train = reOrganize_mDATA_v2(mDATA_train)
-    SlideNames_val, FeatList_val, Label_val = reOrganize_mDATA_v2(mDATA_val)
-    SlideNames_test, FeatList_test, Label_test = reOrganize_mDATA_test_v2(mDATA_test)
+    SlideNames_train, FeatList_train, Label_train = reorganize_mData_sarcoma(mDATA_train)
+    SlideNames_val, FeatList_val, Label_val = reorganize_mData_sarcoma(mDATA_val)
+    SlideNames_test, FeatList_test, Label_test = reorganize_mData_sarcoma(mDATA_test)
 
     print_log(f'training slides: {len(SlideNames_train)}, validation slides: {len(SlideNames_val)}, test slides: {len(SlideNames_test)}', log_file)
 
@@ -128,10 +130,10 @@ def main():
                                                         UClassifier=attCls, mDATA_list=(SlideNames_test, FeatList_test, Label_test), criterion=ce_cri, epoch=ii,  params=params, f_log=log_file, writer=writer, numGroup=params.numGroup_test, total_instance=params.total_instance_test, distill=params.distill_type)
         print_log(' ', log_file)
 
-        if ii > int(params.EPOCH*0.8):
+        if ii > int(params.EPOCH*0):
             if auc_val > best_auc:
                 best_auc = auc_val
-                best_lepoch = ii
+                best_epoch = ii
                 test_auc = tauc
                 if params.isSaveModel:
                     tsave_dict = {
@@ -334,6 +336,7 @@ def train_attention_preFeature_DTFD(mDATA_list, classifier, dimReduction, attent
                 patch_pred_logits = torch.transpose(patch_pred_logits, 0, 1)  ## n x cls
                 patch_pred_softmax = torch.softmax(patch_pred_logits, dim=1)  ## n x cls
 
+                # print(patch_pred_softmax[1])
                 _, sort_idx = torch.sort(patch_pred_softmax[:,-1], descending=True)
 
                 topk_idx_max = sort_idx[:instance_per_group].long()
@@ -534,6 +537,7 @@ def reOrganize_mDATA_v2(mDATA):
 
     return SlideNames, FeatList, Label
 
+
 def reOrganize_mDATA_test_v2(mDATA):
 
     tumorSlides = os.listdir(testMask_dir)
@@ -558,6 +562,23 @@ def reOrganize_mDATA_test_v2(mDATA):
         #     tfeat = torch.from_numpy(tpatch['feature'])
         #     featGroup.append(tfeat.unsqueeze(0))
 
+        FeatList.append(featGroup)
+
+    return SlideNames, FeatList, Label
+
+
+def reorganize_mData_sarcoma(mDATA):
+    SlideNames = []
+    FeatList = []
+    Label = []
+    labels = pd.read_csv("/mnt/nvme0n1/ICCV/lipo/lipo_sub_data.csv")
+    for slide_name in mDATA.keys():
+        SlideNames.append(slide_name)
+        label = labels[labels['slide_id'] == slide_name]['slide_label'].values[0]
+        assert (label == 1) or (label == 0)
+
+        Label.append(label)
+        featGroup = mDATA[slide_name]
         FeatList.append(featGroup)
 
     return SlideNames, FeatList, Label
