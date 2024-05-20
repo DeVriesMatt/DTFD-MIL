@@ -35,9 +35,9 @@ parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--batch_size_v', default=1, type=int)
 parser.add_argument('--num_workers', default=4, type=int)
 parser.add_argument('--num_cls', default=2, type=int)
-parser.add_argument('--mDATA0_dir_train0', default='./features_256_train.pickle', type=str)  ## Train Set
-parser.add_argument('--mDATA0_dir_val0', default='./features_256_val.pickle', type=str)  ## Validation Set
-parser.add_argument('--mDATA_dir_test0', default='./features_256_test.pickle', type=str)  ## Test Set
+parser.add_argument('--mDATA0_dir_train0', default='./features_256_train_transmilfold.pickle', type=str)  ## Train Set
+parser.add_argument('--mDATA0_dir_val0', default='./features_256_val_transmilfold.pickle', type=str)  ## Validation Set
+parser.add_argument('--mDATA_dir_test0', default='./features_256_test_transmilfold.pickle', type=str)  ## Test Set
 parser.add_argument('--numGroup', default=4, type=int)
 parser.add_argument('--total_instance', default=4, type=int)
 parser.add_argument('--numGroup_test', default=4, type=int)
@@ -50,7 +50,7 @@ parser.add_argument('--numLayer_Res', default=0, type=int)
 parser.add_argument('--temperature', default=1, type=float)
 parser.add_argument('--num_MeanInference', default=1, type=int)
 parser.add_argument('--distill_type', default='AFS', type=str)  ## MaxMinS, MaxS, AFS
-parser.add_argument('--saved_model_path', default='./', type=str)  ## MaxMinS, MaxS, AFS
+parser.add_argument('--saved_model_path', default='/mnt/nvme0n1/ICCV/DTFD-MIL/best_model_0.pth', type=str)  ## MaxMinS, MaxS, AFS
 
 torch.manual_seed(32)
 torch.cuda.manual_seed(32)
@@ -63,7 +63,7 @@ def main():
     epoch_step = json.loads(params.epoch_step)
     writer = SummaryWriter(os.path.join(params.log_dir, 'LOG', params.name))
 
-    in_chn = 1024
+    in_chn = 512
 
     classifier = Classifier_1fc(params.mDim, params.num_cls, params.droprate).to(params.device)
     attention = Attention(params.mDim).to(params.device)
@@ -99,11 +99,11 @@ def main():
     # SlideNames_val, FeatList_val, Label_val = reOrganize_mDATA(mDATA_val)
     # SlideNames_test, FeatList_test, Label_test = reOrganize_mDATA_test(mDATA_test)
 
-    SlideNames_train, FeatList_train, Label_train = reorganize_mData_sarcoma(mDATA_train)
-    SlideNames_val, FeatList_val, Label_val = reorganize_mData_sarcoma(mDATA_val)
+    SlideNames_train, FeatList_train, Label_train = reOrganize_mDATA_v2(mDATA_train)
+    SlideNames_val, FeatList_val, Label_val = reOrganize_mDATA_v2(mDATA_val)
 
-    # TODO: Change this whenchanging datasets.
-    SlideNames_test, FeatList_test, Label_test = reorganize_mData_sarcoma(mDATA_test)
+    # TODO: Change this when changing datasets.
+    SlideNames_test, FeatList_test, Label_test = reOrganize_mDATA_test_v2(mDATA_test)
 
     print_log(
         f'training slides: {len(SlideNames_train)}, validation slides: {len(SlideNames_val)}, test slides: {len(SlideNames_test)}',
@@ -124,7 +124,7 @@ def main():
     best_epoch = -1
     test_auc = 0
 
-    if params.task != 'evaluate':
+    if params.task == 'train':
         for ii in range(params.EPOCH):
 
             for param_group in optimizer_adam1.param_groups:
@@ -178,7 +178,7 @@ def main():
             scheduler0.step()
             scheduler1.step()
 
-    else:
+    elif params.task == 'evaluate':
         save_path = params.saved_model_path
         checkpoint = torch.load(save_path, map_location='cuda')
 
@@ -187,11 +187,12 @@ def main():
         attention.load_state_dict(checkpoint['attention'])
         dimReduction.load_state_dict(checkpoint['dim_reduction'])
         attCls.load_state_dict(checkpoint['att_classifier'])
+        print(SlideNames_test)
 
-        auc_1, macc_1, mF1_1, gPred_0, gPred_1, gt_0, gt_1, all_patch_pred_softmax = evaluate_trained_model(classifier=classifier, dimReduction=dimReduction,
+        auc_1, macc_1, mF1_1, gPred_0, gPred_1, gt_0, gt_1, all_patch_pred_softmax, AA, indices = evaluate_trained_model(classifier=classifier, dimReduction=dimReduction,
                                    attention=attention,
                                    UClassifier=attCls,
-                                   mDATA_list=(SlideNames_test, FeatList_test, Label_test),
+                                   mDATA_list=(SlideNames_test, FeatList_test, Label_test), # TODO: Changed to only see first slide for extractning heatmaps
                                    criterion=ce_cri, params=params, f_log=log_file,
                                    writer=writer, numGroup=params.numGroup_test,
                                    total_instance=params.total_instance_test,
@@ -200,8 +201,392 @@ def main():
         df = pd.DataFrame([[auc_1, macc_1.cpu().numpy(), mF1_1.cpu().numpy()]], columns=['test_auc', 'test_acc', 'test_f1'])
 
         df.to_csv(params.saved_model_path.replace('pth', 'csv'))
+        torch.save(AA.detach().cpu(), params.saved_model_path.replace('pth', 'pt'))
+
+        print(AA)
+        print(AA.shape)
+        print(all_patch_pred_softmax)
+        print(all_patch_pred_softmax.shape)
+
+    else:
+
+        save_path = params.saved_model_path
+        checkpoint = torch.load(save_path, map_location='cuda')
+
+        classifier.load_state_dict(checkpoint['classifier'])
+
+        attention.load_state_dict(checkpoint['attention'])
+        dimReduction.load_state_dict(checkpoint['dim_reduction'])
+        attCls.load_state_dict(checkpoint['att_classifier'])
+        print(SlideNames_test[0])
+
+        logits, Y_prob, Y_hat, A, _, indices = infer_single_slide(
+            classifier=classifier, dimReduction=dimReduction,
+            attention=attention,
+            UClassifier=attCls,
+            mDATA_list=([SlideNames_test[0]], [FeatList_test[0]], [Label_test[0]]),
+            # TODO: Changed to only see first slide for extractning heatmaps
+            criterion=ce_cri, params=params, numGroup=params.numGroup_test,
+            total_instance=params.total_instance_test,
+            distill=params.distill_type)
+
+        print(Y_prob.detach().cpu().numpy(), A.detach().cpu().numpy())
+        tile_pred = torch.softmax(logits, dim=1)[:, 1].view(-1, 1).detach().cpu().numpy()
+        print(indices.shape)
+        ordered_tile_preds = np.asarray([tile_pred[i] for i in indices])
+        print(ordered_tile_preds)
+        print(tile_pred.shape)
+        print(ordered_tile_preds.shape)
+        print(A.shape)
+        torch.save(torch.tensor(ordered_tile_preds), "test_001_dtfd.pt")
+        torch.save(A.detach().cpu(), "test_001_dtfd_att.pt")
 
 
+
+def extract_feats_for_heatmap():
+    params = parser.parse_args()
+
+    in_chn = 512
+
+    classifier = Classifier_1fc(params.mDim, params.num_cls, params.droprate).to(params.device)
+    attention = Attention(params.mDim).to(params.device)
+    dimReduction = DimReduction(in_chn, params.mDim, numLayer_Res=params.numLayer_Res).to(params.device)
+    attCls = Attention_with_Classifier(L=params.mDim, num_cls=params.num_cls, droprate=params.droprate_2).to(
+        params.device)
+
+    save_path = params.saved_model_path
+    checkpoint = torch.load(save_path, map_location='cuda')
+
+    classifier.load_state_dict(checkpoint['classifier'])
+
+    attention.load_state_dict(checkpoint['attention'])
+    dimReduction.load_state_dict(checkpoint['dim_reduction'])
+    attCls.load_state_dict(checkpoint['att_classifier'])
+    with open(params.mDATA0_dir_train0, 'rb') as f:
+        mDATA_train = pickle.load(f)
+    with open(params.mDATA0_dir_val0, 'rb') as f:
+        mDATA_val = pickle.load(f)
+    with open(params.mDATA_dir_test0, 'rb') as f:
+        mDATA_test = pickle.load(f)
+    #
+    # SlideNames_train, FeatList_train, Label_train = reOrganize_mDATA(mDATA_train)
+    # SlideNames_val, FeatList_val, Label_val = reOrganize_mDATA(mDATA_val)
+    # SlideNames_test, FeatList_test, Label_test = reOrganize_mDATA_test(mDATA_test)
+
+    SlideNames_train, FeatList_train, Label_train = reOrganize_mDATA_v2(mDATA_train)
+    SlideNames_val, FeatList_val, Label_val = reOrganize_mDATA_v2(mDATA_val)
+
+    # TODO: Change this whenchanging datasets.
+    SlideNames_test, FeatList_test, Label_test = reOrganize_mDATA_test_v2(mDATA_test)
+    print(SlideNames_test[0])
+
+    logits, Y_prob, Y_hat, A, _, indices = infer_single_slide(
+        classifier=classifier, dimReduction=dimReduction,
+        attention=attention,
+        UClassifier=attCls,
+        mDATA_list=([SlideNames_test[0]], [FeatList_test[0]], [Label_test[0]]),
+        # TODO: Changed to only see first slide for extractning heatmaps
+        criterion=None, params=params, numGroup=params.numGroup_test,
+        total_instance=params.total_instance_test,
+        distill=params.distill_type)
+
+    print(Y_prob)
+
+    return logits, Y_prob, Y_hat, A
+
+
+def infer_single_slide(mDATA_list,
+                           classifier,
+                           dimReduction,
+                           attention,
+                           UClassifier,
+                           criterion=None,
+                           params=None,
+                       numGroup=3,
+                           total_instance=3, distill='MaxMinS'):
+
+    classifier.eval()
+    attention.eval()
+    dimReduction.eval()
+    UClassifier.eval()
+
+    SlideNames, FeatLists, Label = mDATA_list
+    instance_per_group = total_instance // numGroup
+
+    test_loss0 = AverageMeter()
+    test_loss1 = AverageMeter()
+
+    gPred_0 = torch.FloatTensor().to(params.device)
+    gt_0 = torch.LongTensor().to(params.device)
+    gPred_1 = torch.FloatTensor().to(params.device)
+    gt_1 = torch.LongTensor().to(params.device)
+
+    with torch.no_grad():
+
+        numSlides = len(SlideNames)
+        numIter = numSlides // params.batch_size_v
+        tIDX = list(range(numSlides))
+
+        for idx in range(numIter):
+
+            tidx_slide = tIDX[idx * params.batch_size_v:(idx + 1) * params.batch_size_v]
+            slide_names = [SlideNames[sst] for sst in tidx_slide]
+            tlabel = [Label[sst] for sst in tidx_slide]
+            label_tensor = torch.LongTensor(tlabel).to(params.device)
+            batch_feat = [FeatLists[sst].to(params.device) for sst in tidx_slide]
+            all_feat_indexes = []
+            for tidx, tfeat in enumerate(batch_feat):
+                tslideName = slide_names[tidx]
+                tslideLabel = label_tensor[tidx].unsqueeze(0)
+                midFeat = dimReduction(tfeat)
+
+                AA = attention(midFeat, isNorm=False).squeeze(0)  ## N
+
+                allSlide_pred_softmax = []
+
+
+                for jj in range(params.num_MeanInference):
+
+                    feat_index = list(range(tfeat.shape[0]))
+                    random.shuffle(feat_index)
+                    index_chunk_list = np.array_split(np.array(feat_index), numGroup)
+                    index_chunk_list = [sst.tolist() for sst in index_chunk_list]
+
+                    slide_d_feat = []
+                    slide_sub_preds = []
+                    slide_sub_labels = []
+                    all_patch_pred_softmax = []
+                    all_patch_pred_logits = []
+                    for tindex in index_chunk_list:
+                        slide_sub_labels.append(tslideLabel)
+                        idx_tensor = torch.LongTensor(tindex).to(params.device)
+                        tmidFeat = midFeat.index_select(dim=0, index=idx_tensor)
+
+                        tAA = AA.index_select(dim=0, index=idx_tensor)
+                        tAA = torch.softmax(tAA, dim=0)
+                        tattFeats = torch.einsum('ns,n->ns', tmidFeat, tAA)  ### n x fs
+                        tattFeat_tensor = torch.sum(tattFeats, dim=0).unsqueeze(0)  ## 1 x fs
+
+                        tPredict = classifier(tattFeat_tensor)  ### 1 x 2
+                        slide_sub_preds.append(tPredict)
+
+                        patch_pred_logits = get_cam_1d(classifier, tattFeats.unsqueeze(0)).squeeze(0)  ###  cls x n
+                        patch_pred_logits = torch.transpose(patch_pred_logits, 0, 1)  ## n x cls
+                        patch_pred_softmax = torch.softmax(patch_pred_logits, dim=1)  ## n x cls
+
+                        _, sort_idx = torch.sort(patch_pred_softmax[:, -1], descending=True)
+
+                        if distill == 'MaxMinS':
+                            topk_idx_max = sort_idx[:instance_per_group].long()
+                            topk_idx_min = sort_idx[-instance_per_group:].long()
+                            topk_idx = torch.cat([topk_idx_max, topk_idx_min], dim=0)
+                            d_inst_feat = tmidFeat.index_select(dim=0, index=topk_idx)
+                            slide_d_feat.append(d_inst_feat)
+                        elif distill == 'MaxS':
+                            topk_idx_max = sort_idx[:instance_per_group].long()
+                            topk_idx = topk_idx_max
+                            d_inst_feat = tmidFeat.index_select(dim=0, index=topk_idx)
+                            slide_d_feat.append(d_inst_feat)
+                        elif distill == 'AFS':
+                            slide_d_feat.append(tattFeat_tensor)
+
+                        all_patch_pred_softmax.append(patch_pred_softmax)
+                        all_patch_pred_logits.append(patch_pred_logits)
+                        all_feat_indexes.append(tindex)
+
+                    all_patch_pred_softmax = torch.cat(all_patch_pred_softmax, dim=0)
+                    all_patch_pred_logits = torch.cat(all_patch_pred_logits, dim=0)
+
+
+                    slide_d_feat = torch.cat(slide_d_feat, dim=0)
+                    slide_sub_preds = torch.cat(slide_sub_preds, dim=0)
+                    slide_sub_labels = torch.cat(slide_sub_labels, dim=0)
+
+                    gPred_0 = torch.cat([gPred_0, slide_sub_preds], dim=0)
+                    gt_0 = torch.cat([gt_0, slide_sub_labels], dim=0)
+                    loss0 = criterion(slide_sub_preds, slide_sub_labels).mean()
+                    test_loss0.update(loss0.item(), numGroup)
+
+                    gSlidePred = UClassifier(slide_d_feat)
+                    allSlide_pred_softmax.append(torch.softmax(gSlidePred, dim=1))
+
+                allSlide_pred_softmax = torch.cat(allSlide_pred_softmax, dim=0)
+                allSlide_pred_softmax = torch.mean(allSlide_pred_softmax, dim=0).unsqueeze(0)
+                gPred_1 = torch.cat([gPred_1, allSlide_pred_softmax], dim=0)
+                gt_1 = torch.cat([gt_1, tslideLabel], dim=0)
+
+                loss1 = F.nll_loss(allSlide_pred_softmax, tslideLabel)
+                test_loss1.update(loss1.item(), 1)
+                all_indexes = torch.cat([torch.tensor(x) for x in all_feat_indexes], dim=0)
+
+    gPred_0 = torch.softmax(gPred_0, dim=1)
+    gPred_0 = gPred_0[:, -1]
+    gPred_1 = gPred_1[:, -1]
+    logits = all_patch_pred_logits
+    Y_prob = all_patch_pred_softmax
+    Y_hat = all_patch_pred_softmax.argmax(axis=1)
+    A = AA
+
+    return logits, Y_prob, Y_hat, A, A, all_indexes
+
+def evaluate_trained_model(mDATA_list,
+                           classifier,
+                           dimReduction,
+                           attention,
+                           UClassifier,
+                           criterion=None,
+                           params=None,
+                           f_log=None,
+                           writer=None, numGroup=3,
+                           total_instance=3, distill='MaxMinS'):
+
+    classifier.eval()
+    attention.eval()
+    dimReduction.eval()
+    UClassifier.eval()
+
+    SlideNames, FeatLists, Label = mDATA_list
+    instance_per_group = total_instance // numGroup
+
+    test_loss0 = AverageMeter()
+    test_loss1 = AverageMeter()
+
+    gPred_0 = torch.FloatTensor().to(params.device)
+    gt_0 = torch.LongTensor().to(params.device)
+    gPred_1 = torch.FloatTensor().to(params.device)
+    gt_1 = torch.LongTensor().to(params.device)
+
+    with torch.no_grad():
+
+        numSlides = len(SlideNames)
+        numIter = numSlides // params.batch_size_v
+        tIDX = list(range(numSlides))
+
+        for idx in range(numIter):
+
+            tidx_slide = tIDX[idx * params.batch_size_v:(idx + 1) * params.batch_size_v]
+            slide_names = [SlideNames[sst] for sst in tidx_slide]
+            tlabel = [Label[sst] for sst in tidx_slide]
+            label_tensor = torch.LongTensor(tlabel).to(params.device)
+            batch_feat = [FeatLists[sst].to(params.device) for sst in tidx_slide]
+            all_feat_indexes = []
+            slide_names_coords = []
+            for tidx, tfeat in enumerate(batch_feat):
+                tslideName = slide_names[tidx]
+                slide_names_coords.append(tslideName)
+                tslideLabel = label_tensor[tidx].unsqueeze(0)
+                midFeat = dimReduction(tfeat)
+
+                AA = attention(midFeat, isNorm=False).squeeze(0)  ## N
+
+                allSlide_pred_softmax = []
+
+                for jj in range(params.num_MeanInference):
+
+                    feat_index = list(range(tfeat.shape[0]))
+                    random.shuffle(feat_index)
+                    index_chunk_list = np.array_split(np.array(feat_index), numGroup)
+                    index_chunk_list = [sst.tolist() for sst in index_chunk_list]
+
+                    slide_d_feat = []
+                    slide_sub_preds = []
+                    slide_sub_labels = []
+                    all_patch_pred_softmax = []
+                    for tindex in index_chunk_list:
+                        slide_sub_labels.append(tslideLabel)
+                        idx_tensor = torch.LongTensor(tindex).to(params.device)
+                        tmidFeat = midFeat.index_select(dim=0, index=idx_tensor)
+
+                        tAA = AA.index_select(dim=0, index=idx_tensor)
+                        tAA = torch.softmax(tAA, dim=0)
+                        tattFeats = torch.einsum('ns,n->ns', tmidFeat, tAA)  ### n x fs
+                        tattFeat_tensor = torch.sum(tattFeats, dim=0).unsqueeze(0)  ## 1 x fs
+
+                        tPredict = classifier(tattFeat_tensor)  ### 1 x 2
+                        slide_sub_preds.append(tPredict)
+
+                        patch_pred_logits = get_cam_1d(classifier, tattFeats.unsqueeze(0)).squeeze(0)  ###  cls x n
+                        patch_pred_logits = torch.transpose(patch_pred_logits, 0, 1)  ## n x cls
+                        patch_pred_softmax = torch.softmax(patch_pred_logits, dim=1)  ## n x cls
+
+                        _, sort_idx = torch.sort(patch_pred_softmax[:, -1], descending=True)
+
+                        if distill == 'MaxMinS':
+                            topk_idx_max = sort_idx[:instance_per_group].long()
+                            topk_idx_min = sort_idx[-instance_per_group:].long()
+                            topk_idx = torch.cat([topk_idx_max, topk_idx_min], dim=0)
+                            d_inst_feat = tmidFeat.index_select(dim=0, index=topk_idx)
+                            slide_d_feat.append(d_inst_feat)
+                        elif distill == 'MaxS':
+                            topk_idx_max = sort_idx[:instance_per_group].long()
+                            topk_idx = topk_idx_max
+                            d_inst_feat = tmidFeat.index_select(dim=0, index=topk_idx)
+                            slide_d_feat.append(d_inst_feat)
+                        elif distill == 'AFS':
+                            slide_d_feat.append(tattFeat_tensor)
+
+                        all_patch_pred_softmax.append(patch_pred_softmax)
+                        all_feat_indexes.append(tindex)
+
+                    all_patch_pred_softmax = torch.cat(all_patch_pred_softmax, dim=0)
+                    slide_d_feat = torch.cat(slide_d_feat, dim=0)
+                    slide_sub_preds = torch.cat(slide_sub_preds, dim=0)
+                    slide_sub_labels = torch.cat(slide_sub_labels, dim=0)
+
+                    gPred_0 = torch.cat([gPred_0, slide_sub_preds], dim=0)
+                    gt_0 = torch.cat([gt_0, slide_sub_labels], dim=0)
+                    loss0 = criterion(slide_sub_preds, slide_sub_labels).mean()
+                    test_loss0.update(loss0.item(), numGroup)
+
+                    gSlidePred = UClassifier(slide_d_feat)
+                    allSlide_pred_softmax.append(torch.softmax(gSlidePred, dim=1))
+
+                all_indexes = torch.cat([torch.tensor(x) for x in all_feat_indexes], dim=0)
+                # print(all_indexes.shape)
+                print("Attention:", AA)
+                fold = 4
+                torch.save(AA.detach().cpu(),
+                           f"/mnt/nvme0n1/ICCV/camelyon_5_fold/v2/Attention/Folds/fold{fold}/{tslideName}_att.pt")
+
+                tile_pred = all_patch_pred_softmax[:, 1].view(-1, 1).detach().cpu().numpy()
+                torch.save(torch.tensor(tile_pred), f"/mnt/nvme0n1/ICCV/camelyon_5_fold/v2/Attention/Folds/fold{fold}/{tslideName}_softmax.pt")
+                torch.save(torch.tensor(all_indexes), f"/mnt/nvme0n1/ICCV/camelyon_5_fold/v2/Attention/Folds/fold{fold}/{tslideName}_indices.pt")
+                print(tile_pred)
+                # ordered_tile_preds = np.asarray([tile_pred[i] for i in all_indexes])
+                # torch.save(torch.tensor(ordered_tile_preds), f"/mnt/nvme0n1/ICCV/camelyon_5_fold/v2/Attention/fold4/{tslideName}_softmax.pt")
+
+                allSlide_pred_softmax = torch.cat(allSlide_pred_softmax, dim=0)
+                allSlide_pred_softmax = torch.mean(allSlide_pred_softmax, dim=0).unsqueeze(0)
+                gPred_1 = torch.cat([gPred_1, allSlide_pred_softmax], dim=0)
+                gt_1 = torch.cat([gt_1, tslideLabel], dim=0)
+
+                loss1 = F.nll_loss(allSlide_pred_softmax, tslideLabel)
+                test_loss1.update(loss1.item(), 1)
+
+
+    # all_pred_logits = torch.softmax(all_pred_logits, dim=1)
+    gPred_0 = torch.softmax(gPred_0, dim=1)
+    gPred_0 = gPred_0[:, -1]
+    gPred_1 = gPred_1[:, -1]
+    # print(gPred_1)
+    # print(gt_1)
+    # print((gPred_1 >= 0.5) == gt_1)
+
+    macc_0, mprec_0, mrecal_0, mspec_0, mF1_0, auc_0 = eval_metric(gPred_0, gt_0)
+    macc_1, mprec_1, mrecal_1, mspec_1, mF1_1, auc_1 = eval_metric(gPred_1, gt_1)
+
+    # print_log(
+    #     f'  First-Tier acc {macc_0}, precision {mprec_0}, recall {mrecal_0}, specificity {mspec_0}, F1 {mF1_0}, AUC {auc_0}',
+    #     f_log)
+    # print_log(
+    #     f'  Second-Tier acc {macc_1}, precision {mprec_1}, recall {mrecal_1}, specificity {mspec_1}, F1 {mF1_1}, AUC {auc_1}',
+        # f_log)
+
+    # writer.add_scalar(f'auc_0 ', auc_0, epoch)
+    # writer.add_scalar(f'auc_1 ', auc_1, epoch)
+    # print(len(all_pred_logits))
+    # print(all_pred_logits.shape)
+    return auc_1, macc_1, mF1_1, gPred_0, gPred_1, gt_0, gt_1, all_patch_pred_softmax, AA, all_indexes
 
 def test_attention_DTFD_preFeat_MultipleMean(mDATA_list, classifier, dimReduction, attention, UClassifier, epoch,
                                              criterion=None, params=None, f_log=None, writer=None, numGroup=3,
@@ -326,149 +711,7 @@ def test_attention_DTFD_preFeat_MultipleMean(mDATA_list, classifier, dimReductio
     writer.add_scalar(f'auc_0 ', auc_0, epoch)
     writer.add_scalar(f'auc_1 ', auc_1, epoch)
 
-    return auc_1
-
-
-def evaluate_trained_model(mDATA_list,
-                           classifier,
-                           dimReduction,
-                           attention,
-                           UClassifier,
-                           criterion=None,
-                           params=None,
-                           f_log=None,
-                           writer=None, numGroup=3,
-                           total_instance=3, distill='MaxMinS'):
-
-    classifier.eval()
-    attention.eval()
-    dimReduction.eval()
-    UClassifier.eval()
-
-    SlideNames, FeatLists, Label = mDATA_list
-    instance_per_group = total_instance // numGroup
-
-    test_loss0 = AverageMeter()
-    test_loss1 = AverageMeter()
-
-    gPred_0 = torch.FloatTensor().to(params.device)
-    gt_0 = torch.LongTensor().to(params.device)
-    gPred_1 = torch.FloatTensor().to(params.device)
-    gt_1 = torch.LongTensor().to(params.device)
-
-    with torch.no_grad():
-
-        numSlides = len(SlideNames)
-        numIter = numSlides // params.batch_size_v
-        tIDX = list(range(numSlides))
-
-        for idx in range(numIter):
-
-            tidx_slide = tIDX[idx * params.batch_size_v:(idx + 1) * params.batch_size_v]
-            slide_names = [SlideNames[sst] for sst in tidx_slide]
-            tlabel = [Label[sst] for sst in tidx_slide]
-            label_tensor = torch.LongTensor(tlabel).to(params.device)
-            batch_feat = [FeatLists[sst].to(params.device) for sst in tidx_slide]
-
-            for tidx, tfeat in enumerate(batch_feat):
-                tslideName = slide_names[tidx]
-                tslideLabel = label_tensor[tidx].unsqueeze(0)
-                midFeat = dimReduction(tfeat)
-
-                AA = attention(midFeat, isNorm=False).squeeze(0)  ## N
-
-                allSlide_pred_softmax = []
-
-                for jj in range(params.num_MeanInference):
-
-                    feat_index = list(range(tfeat.shape[0]))
-                    random.shuffle(feat_index)
-                    index_chunk_list = np.array_split(np.array(feat_index), numGroup)
-                    index_chunk_list = [sst.tolist() for sst in index_chunk_list]
-
-                    slide_d_feat = []
-                    slide_sub_preds = []
-                    slide_sub_labels = []
-                    all_patch_pred_softmax = []
-                    for tindex in index_chunk_list:
-                        slide_sub_labels.append(tslideLabel)
-                        idx_tensor = torch.LongTensor(tindex).to(params.device)
-                        tmidFeat = midFeat.index_select(dim=0, index=idx_tensor)
-
-                        tAA = AA.index_select(dim=0, index=idx_tensor)
-                        tAA = torch.softmax(tAA, dim=0)
-                        tattFeats = torch.einsum('ns,n->ns', tmidFeat, tAA)  ### n x fs
-                        tattFeat_tensor = torch.sum(tattFeats, dim=0).unsqueeze(0)  ## 1 x fs
-
-                        tPredict = classifier(tattFeat_tensor)  ### 1 x 2
-                        slide_sub_preds.append(tPredict)
-
-                        patch_pred_logits = get_cam_1d(classifier, tattFeats.unsqueeze(0)).squeeze(0)  ###  cls x n
-                        patch_pred_logits = torch.transpose(patch_pred_logits, 0, 1)  ## n x cls
-                        patch_pred_softmax = torch.softmax(patch_pred_logits, dim=1)  ## n x cls
-
-                        _, sort_idx = torch.sort(patch_pred_softmax[:, -1], descending=True)
-
-                        if distill == 'MaxMinS':
-                            topk_idx_max = sort_idx[:instance_per_group].long()
-                            topk_idx_min = sort_idx[-instance_per_group:].long()
-                            topk_idx = torch.cat([topk_idx_max, topk_idx_min], dim=0)
-                            d_inst_feat = tmidFeat.index_select(dim=0, index=topk_idx)
-                            slide_d_feat.append(d_inst_feat)
-                        elif distill == 'MaxS':
-                            topk_idx_max = sort_idx[:instance_per_group].long()
-                            topk_idx = topk_idx_max
-                            d_inst_feat = tmidFeat.index_select(dim=0, index=topk_idx)
-                            slide_d_feat.append(d_inst_feat)
-                        elif distill == 'AFS':
-                            slide_d_feat.append(tattFeat_tensor)
-
-                        all_patch_pred_softmax.append(patch_pred_softmax)
-
-                    all_patch_pred_softmax = torch.cat(all_patch_pred_softmax, dim=0)
-                    slide_d_feat = torch.cat(slide_d_feat, dim=0)
-                    slide_sub_preds = torch.cat(slide_sub_preds, dim=0)
-                    slide_sub_labels = torch.cat(slide_sub_labels, dim=0)
-
-                    gPred_0 = torch.cat([gPred_0, slide_sub_preds], dim=0)
-                    gt_0 = torch.cat([gt_0, slide_sub_labels], dim=0)
-                    loss0 = criterion(slide_sub_preds, slide_sub_labels).mean()
-                    test_loss0.update(loss0.item(), numGroup)
-
-                    gSlidePred = UClassifier(slide_d_feat)
-                    allSlide_pred_softmax.append(torch.softmax(gSlidePred, dim=1))
-
-                allSlide_pred_softmax = torch.cat(allSlide_pred_softmax, dim=0)
-                allSlide_pred_softmax = torch.mean(allSlide_pred_softmax, dim=0).unsqueeze(0)
-                gPred_1 = torch.cat([gPred_1, allSlide_pred_softmax], dim=0)
-                gt_1 = torch.cat([gt_1, tslideLabel], dim=0)
-
-                loss1 = F.nll_loss(allSlide_pred_softmax, tslideLabel)
-                test_loss1.update(loss1.item(), 1)
-
-    # all_pred_logits = torch.softmax(all_pred_logits, dim=1)
-    gPred_0 = torch.softmax(gPred_0, dim=1)
-    gPred_0 = gPred_0[:, -1]
-    gPred_1 = gPred_1[:, -1]
-    print(gPred_1)
-    print(gt_1)
-    print((gPred_1 >= 0.5) == gt_1)
-
-    macc_0, mprec_0, mrecal_0, mspec_0, mF1_0, auc_0 = eval_metric(gPred_0, gt_0)
-    macc_1, mprec_1, mrecal_1, mspec_1, mF1_1, auc_1 = eval_metric(gPred_1, gt_1)
-
-    print_log(
-        f'  First-Tier acc {macc_0}, precision {mprec_0}, recall {mrecal_0}, specificity {mspec_0}, F1 {mF1_0}, AUC {auc_0}',
-        f_log)
-    print_log(
-        f'  Second-Tier acc {macc_1}, precision {mprec_1}, recall {mrecal_1}, specificity {mspec_1}, F1 {mF1_1}, AUC {auc_1}',
-        f_log)
-
-    # writer.add_scalar(f'auc_0 ', auc_0, epoch)
-    # writer.add_scalar(f'auc_1 ', auc_1, epoch)
-    # print(len(all_pred_logits))
-    # print(all_pred_logits.shape)
-    return auc_1, macc_1, mF1_1, gPred_0, gPred_1, gt_0, gt_1, all_patch_pred_softmax
+    return auc_1, macc_1, mF1_1, gPred_0, gPred_1, gt_0, gt_1, 1, 1
 
 
 def train_attention_preFeature_DTFD(mDATA_list, classifier, dimReduction, attention, UClassifier, optimizer0,

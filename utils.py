@@ -10,6 +10,7 @@ def get_cam_1d(classifier, features):
 def roc_threshold(label, prediction):
     fpr, tpr, threshold = roc_curve(label, prediction, pos_label=1)
     fpr_optimal, tpr_optimal, threshold_optimal = optimal_thresh(fpr, tpr, threshold)
+    print(label)
     c_auc = roc_auc_score(label, prediction)
     return c_auc, threshold_optimal
 
@@ -18,11 +19,12 @@ def optimal_thresh(fpr, tpr, thresholds, p=0):
     idx = np.argmin(loss, axis=0)
     return fpr[idx], tpr[idx], thresholds[idx]
 
+
 def eval_metric(oprob, label):
 
     auc, threshold = roc_threshold(label.cpu().numpy(), oprob.detach().cpu().numpy())
-    prob = oprob > threshold
-    label = label > threshold
+    prob = oprob > 0.5
+    label = label > 0.5
 
     TP = (prob & label).sum(0).float()
     TN = ((~prob) & (~label)).sum(0).float()

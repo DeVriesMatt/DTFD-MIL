@@ -5,21 +5,21 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9f14ea45-74a4-4f4e-bc6d-a2312b29f170" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/DTFD-MIL.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/DTFT_class.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/Matt_main_dtft_mil.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/create_heatmaps_olga.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/load_model.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/load_submodules.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/olga_DTFT_MIL_layers.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/olga_DTFT_train.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/run.sh" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/test.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/other.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Main_DTFD_MIL_MATT.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/localise.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/run_camel_16.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/DTFD-MIL.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/DTFD-MIL.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Main_DTFD_MIL.py" beforeDir="false" afterPath="$PROJECT_DIR$/Main_DTFD_MIL.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/create_heatmaps_olga.py" beforeDir="false" afterPath="$PROJECT_DIR$/create_heatmaps_olga.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/debug_log/log.txt" beforeDir="false" afterPath="$PROJECT_DIR$/debug_log/log.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/load_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/load_model.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/olga_new_main.py" beforeDir="false" afterPath="$PROJECT_DIR$/olga_new_main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/run.sh" beforeDir="false" afterPath="$PROJECT_DIR$/run.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/test.sh" beforeDir="false" afterPath="$PROJECT_DIR$/test.sh" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -39,25 +39,66 @@
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
   </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 7
+}</component>
   <component name="ProjectId" id="2LVbUvZUuXCXExhRcNYQoHngnI1" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.OpenProjectViewOnStart": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "WebServerToolWindowFactoryState": "false",
-    "last_opened_file_path": "/home/mvries/Documents/GitHub/CLAM",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/mvries/Documents/GitHub/DTFD-MIL&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="Python tests in copilot_test.py" type="tests" factoryName="Autodetect" temporary="true" nameIsGenerated="true">
+      <module name="DTFD-MIL" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="_new_additionalArguments" value="&quot;&quot;" />
+      <option name="_new_target" value="&quot;$PROJECT_DIR$/copilot_test.py&quot;" />
+      <option name="_new_targetType" value="&quot;PATH&quot;" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python tests.Python tests in copilot_test.py" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-babbdf50b680-7c6932dee5e4-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-241.15989.155" />
+      </set>
+    </attachedChunks>
+  </component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
@@ -70,10 +111,26 @@
       <workItem from="1675959942407" duration="3808000" />
       <workItem from="1676298479091" duration="11738000" />
       <workItem from="1677611644990" duration="1280000" />
+      <workItem from="1677862261687" duration="12750000" />
+      <workItem from="1680116561866" duration="706000" />
+      <workItem from="1680173119806" duration="1020000" />
+      <workItem from="1683216556348" duration="599000" />
+      <workItem from="1683285931868" duration="111000" />
+      <workItem from="1683295014050" duration="25000" />
+      <workItem from="1683632026790" duration="9000" />
+      <workItem from="1683725552420" duration="133000" />
+      <workItem from="1687273091122" duration="1199000" />
+      <workItem from="1687979633759" duration="1934000" />
+      <workItem from="1707223425932" duration="2049000" />
+      <workItem from="1707484642244" duration="600000" />
+      <workItem from="1716215759165" duration="43000" />
     </task>
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/DTFD_MIL$.coverage" NAME=" Coverage Results" MODIFIED="1680173407594" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

@@ -38,7 +38,7 @@ def infer_single_slide(model,features, reverse_label_dict, k=1):
 
     preds_str = np.array([reverse_label_dict[Y_hat[0][0]]])
 
-    return Y_hat[0][0],preds_str[0], Y_prob.numpy()[0][0], A.numpy()
+    return Y_hat[0][0], preds_str[0], Y_prob.numpy()[0][0], A.numpy()
 
 
 def load_params(df_entry, params):

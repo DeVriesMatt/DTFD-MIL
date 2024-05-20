@@ -49,7 +49,7 @@ parser.add_argument('--numLayer_Res', default=0, type=int)
 parser.add_argument('--temperature', default=1, type=float)
 parser.add_argument('--num_MeanInference', default=1, type=int)
 parser.add_argument('--distill_type', default='AFS', type=str)   ## MaxMinS, MaxS, AFS
-parser.add_argument('--save_model_path', default='./best_model.pth', type=str)
+parser.add_argument('--save_model_path', default='./best_model_test.pth', type=str)
 
 torch.manual_seed(32)
 torch.cuda.manual_seed(32)
@@ -92,9 +92,16 @@ def main():
     with open(params.mDATA_dir_test0, 'rb') as f:
         mDATA_test = pickle.load(f)
 
-    SlideNames_train, FeatList_train, Label_train = reorganize_mData_sarcoma(mDATA_train)
-    SlideNames_val, FeatList_val, Label_val = reorganize_mData_sarcoma(mDATA_val)
-    SlideNames_test, FeatList_test, Label_test = reorganize_mData_sarcoma(mDATA_test)
+    # SlideNames_train, FeatList_train, Label_train = reorganize_mData_sarcoma(mDATA_train)
+    # SlideNames_val, FeatList_val, Label_val = reorganize_mData_sarcoma(mDATA_val)
+    # SlideNames_test, FeatList_test, Label_test = reorganize_mData_sarcoma(mDATA_test)
+
+    SlideNames_train, FeatList_train, Label_train = reOrganize_mDATA_tcga(mDATA_train)
+    del mDATA_train
+    SlideNames_val, FeatList_val, Label_val = reOrganize_mDATA_tcga(mDATA_val)
+    del mDATA_val
+    SlideNames_test, FeatList_test, Label_test = reOrganize_mDATA_tcga(mDATA_test)
+    del mDATA_test
 
     print_log(f'training slides: {len(SlideNames_train)}, validation slides: {len(SlideNames_val)}, test slides: {len(SlideNames_test)}', log_file)
 
@@ -112,6 +119,7 @@ def main():
     best_auc = 0
     best_epoch = -1
     test_auc = 0
+    test_acc = 0
 
     for ii in range(params.EPOCH):
 
@@ -122,11 +130,11 @@ def main():
         train_attention_preFeature_DTFD(classifier=classifier, dimReduction=dimReduction, attention=attention, UClassifier=attCls, mDATA_list=(SlideNames_train, FeatList_train, Label_train), ce_cri=ce_cri,
                                                    optimizer0=optimizer_adam0, optimizer1=optimizer_adam1, epoch=ii, params=params, f_log=log_file, writer=writer, numGroup=params.numGroup, total_instance=params.total_instance, distill=params.distill_type)
         print_log(f'>>>>>>>>>>> Validation Epoch: {ii}', log_file)
-        auc_val = test_attention_DTFD_preFeat_MultipleMean(classifier=classifier, dimReduction=dimReduction, attention=attention,
+        auc_val, acc_val = test_attention_DTFD_preFeat_MultipleMean(classifier=classifier, dimReduction=dimReduction, attention=attention,
                                                            UClassifier=attCls, mDATA_list=(SlideNames_val, FeatList_val, Label_val), criterion=ce_cri, epoch=ii,  params=params, f_log=log_file, writer=writer, numGroup=params.numGroup_test, total_instance=params.total_instance_test, distill=params.distill_type)
         print_log(' ', log_file)
         print_log(f'>>>>>>>>>>> Test Epoch: {ii}', log_file)
-        tauc = test_attention_DTFD_preFeat_MultipleMean(classifier=classifier, dimReduction=dimReduction, attention=attention,
+        tauc, tacc = test_attention_DTFD_preFeat_MultipleMean(classifier=classifier, dimReduction=dimReduction, attention=attention,
                                                         UClassifier=attCls, mDATA_list=(SlideNames_test, FeatList_test, Label_test), criterion=ce_cri, epoch=ii,  params=params, f_log=log_file, writer=writer, numGroup=params.numGroup_test, total_instance=params.total_instance_test, distill=params.distill_type)
         print_log(' ', log_file)
 
@@ -135,6 +143,7 @@ def main():
                 best_auc = auc_val
                 best_epoch = ii
                 test_auc = tauc
+                test_acc = tacc
                 if params.isSaveModel:
                     tsave_dict = {
                         'classifier': classifier.state_dict(),
@@ -145,6 +154,7 @@ def main():
                     torch.save(tsave_dict, save_dir)
 
             print_log(f' test auc: {test_auc}, from epoch {best_epoch}', log_file)
+            print_log(f' test acc: {test_acc}, from epoch {best_epoch}', log_file)
 
         scheduler0.step()
         scheduler1.step()
@@ -218,6 +228,7 @@ def test_attention_DTFD_preFeat_MultipleMean(mDATA_list, classifier, dimReductio
                         patch_pred_logits = torch.transpose(patch_pred_logits, 0, 1)  ## n x cls
                         patch_pred_softmax = torch.softmax(patch_pred_logits, dim=1)  ## n x cls
 
+
                         _, sort_idx = torch.sort(patch_pred_softmax[:, -1], descending=True)
 
                         if distill == 'MaxMinS':
@@ -256,7 +267,11 @@ def test_attention_DTFD_preFeat_MultipleMean(mDATA_list, classifier, dimReductio
                 loss1 = F.nll_loss(allSlide_pred_softmax, tslideLabel)
                 test_loss1.update(loss1.item(), 1)
 
-    gPred_0 = torch.softmax(gPred_0, dim=1)
+
+
+    gPred_0 = torch.softmax(gPred_0,
+                            dim=1
+                            )
     gPred_0 = gPred_0[:, -1]
 
     gPred_1 = gPred_1[:, -1]
@@ -270,7 +285,7 @@ def test_attention_DTFD_preFeat_MultipleMean(mDATA_list, classifier, dimReductio
     writer.add_scalar(f'auc_0 ', auc_0, epoch)
     writer.add_scalar(f'auc_1 ', auc_1, epoch)
 
-    return auc_1
+    return auc_1, macc_1
 
 def train_attention_preFeature_DTFD(mDATA_list, classifier, dimReduction, attention, UClassifier,  optimizer0, optimizer1, epoch, ce_cri=None, params=None,
                                           f_log=None, writer=None, numGroup=3, total_instance=3, distill='AFS'):
@@ -326,6 +341,7 @@ def train_attention_preFeature_DTFD(mDATA_list, classifier, dimReduction, attent
                 tmidFeat = dimReduction(subFeat_tensor)
 
                 tAA = attention(tmidFeat).squeeze(0)
+
                 tattFeats = torch.einsum('ns,n->ns', tmidFeat, tAA)  ### n x fs
 
                 tattFeat_tensor = torch.sum(tattFeats, dim=0).unsqueeze(0)
@@ -333,10 +349,10 @@ def train_attention_preFeature_DTFD(mDATA_list, classifier, dimReduction, attent
                 slide_sub_preds.append(tPredict)
 
                 patch_pred_logits = get_cam_1d(classifier, tattFeats.unsqueeze(0)).squeeze(0)
+
                 patch_pred_logits = torch.transpose(patch_pred_logits, 0, 1)  ## n x cls
                 patch_pred_softmax = torch.softmax(patch_pred_logits, dim=1)  ## n x cls
 
-                # print(patch_pred_softmax[1])
                 _, sort_idx = torch.sort(patch_pred_softmax[:,-1], descending=True)
 
                 topk_idx_max = sort_idx[:instance_per_group].long()
@@ -479,13 +495,15 @@ def reOrganize_mDATA_tcga(mDATA):
     FeatList = []
     Label = []
     for slide_name in mDATA.keys():
+        if "_features" not in slide_name:
+            continue
         SlideNames.append(slide_name)
 
 
-        label = mDATA[slide_name][1]
+        label = mDATA[f"{slide_name.replace('features', 'label')}"][0]
         Label.append(label)
 
-        featGroup = mDATA[slide_name][0]
+        featGroup = mDATA[f"{slide_name}"]
         FeatList.append(featGroup)
 
     return SlideNames, FeatList, Label
@@ -501,10 +519,10 @@ def reOrganize_mDATA_test_tcga(mDATA):
     for slide_name in mDATA.keys():
         SlideNames.append(slide_name)
 
-        label= mDATA[slide_name][1]
+        label = mDATA[f"{slide_name}_label"][0]
         Label.append(label)
 
-        featGroup = mDATA[slide_name][0]
+        featGroup = mDATA[f"{slide_name}_features"][0]
 
         FeatList.append(featGroup)
 
@@ -515,6 +533,7 @@ def reOrganize_mDATA_v2(mDATA):
     SlideNames = []
     FeatList = []
     Label = []
+
     for slide_name in mDATA.keys():
         SlideNames.append(slide_name)
 
